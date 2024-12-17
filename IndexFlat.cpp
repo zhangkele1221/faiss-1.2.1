@@ -42,15 +42,39 @@ void IndexFlat::reset() {
 void IndexFlat::search (idx_t n, const float *x, idx_t k,
                                float *distances, idx_t *labels) const
 {
-    // we see the distances and labels as heaps
+    // 在Faiss中，向量搜索的结果（距离和索引ID）通常被组织成一种"堆"的形式（heap）
+    // 对于内积搜索与L2搜索，会使用不同的堆策略（最小堆或最大堆）来维护当前最优的k个候选结果。
+    // 内积搜索使用最小堆，因为我们要最大化内积值（相似度越大越好，相当于距离越小越好，所以使用最小堆存储负的内积或相反的比较逻辑）。
+    // L2距离搜索使用最大堆，因为我们要寻找最小的L2距离，相对逻辑刚好相反。
+
+    // 根据度量类型 metric_type 选择不同的knn函数：
+    // METRIC_INNER_PRODUCT 使用 knn_inner_product
+    // METRIC_L2 使用 knn_L2sqr
 
     if (metric_type == METRIC_INNER_PRODUCT) {
+        // 对于内积度量（METRIC_INNER_PRODUCT）：
+        // 构造一个表示最小堆结构的float_minheap_array_t对象，用于存放搜索结果。
+        // 这里的res中保存要返回的labels和distances的指针，以及n和k的大小信息。
         float_minheap_array_t res = {
-            size_t(n), size_t(k), labels, distances};
+            size_t(n),   // 查询向量的数量
+            size_t(k),   // 每个查询需要返回的最近邻数
+            labels,      // 用于存储结果ID的数组指针
+            distances    // 用于存储结果距离的数组指针
+        };
+        // 调用knn_inner_product函数对x与xb进行内积相似度计算，并将结果存放在res中
         knn_inner_product (x, xb.data(), d, n, ntotal, &res);
+
     } else if (metric_type == METRIC_L2) {
+        // 对于L2距离度量（METRIC_L2）：
+        // 构造一个表示最大堆结构的float_maxheap_array_t对象
+        // 原因是对于L2距离，我们是在寻找距离最小的k个点，因此使用最大堆便于在搜索过程中替换较大距离的候选点。
         float_maxheap_array_t res = {
-            size_t(n), size_t(k), labels, distances};
+            size_t(n),
+            size_t(k),
+            labels,
+            distances
+        };
+        // 调用knn_L2sqr函数对x与xb进行L2距离计算，并将结果存放在res中
         knn_L2sqr (x, xb.data(), d, n, ntotal, &res);
     }
 }

@@ -970,9 +970,28 @@ void knn_L2sqr (const float * x,
                 size_t d, size_t nx, size_t ny,
                 float_maxheap_array_t * res)
 {
+    // 本函数用于计算 x 与 y 两组向量之间的 L2 距离平方 L2sqr
+    // 并从中找出最近邻（k-NN）。计算结果会存放在堆结构 res 中。
+    //
+    // 参数说明：
+    // x：查询向量集合的首地址，大小为 nx * d
+    // y：数据库向量集合的首地址，大小为 ny * d
+    // d：向量的维度（dimension）
+    // nx：查询向量的数量
+    // ny：数据库向量的数量
+    // res：存放搜索结果的堆结构（最大堆），包含 n、k、labels、distances 等信息。
+    //
+    // 在 Faiss 中，为了提高计算效率，会根据数据和维度等条件选择不同的实现。
+    // 这里根据 d 是否是4的倍数以及 nx 的大小决定是使用 SSE 优化的计算方式 (knn_L2sqr_sse) 
+    // 还是使用 BLAS 优化版本 (knn_L2sqr_blas) 来计算距离。
+
+    // 如果向量维度 d 是4的整数倍且查询数量 nx 小于某个阈值，
+    // 则使用专门的 SSE优化版本 knn_L2sqr_sse，能更快地进行向量化运算。
     if (d % 4 == 0 && nx < distance_compute_blas_threshold) {
         knn_L2sqr_sse (x, y, d, nx, ny, res);
     } else {
+        // 否则使用基于 BLAS（Basic Linear Algebra Subprograms）的版本 knn_L2sqr_blas
+        // nop 是一个无操作的距离修正（NopDistanceCorrection），表示无需额外修正距离。
         NopDistanceCorrection nop;
         knn_L2sqr_blas (x, y, d, nx, ny, res, nop);
     }
