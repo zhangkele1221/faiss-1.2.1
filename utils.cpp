@@ -795,23 +795,48 @@ static void knn_L2sqr_sse (
 
 #pragma omp parallel for
     for (size_t i = 0; i < nx; i++) {
-        const float * x_ = x + i * d;
-        const float * y_ = y;
+        // 对每个查询向量 x[i] 都进行最近邻搜索。这里使用 OpenMP 的并行化指令
+        // #pragma omp parallel for 遍历 i，从而利用多核 CPU 并行处理多个查询向量。
+
+        const float * x_ = x + i * d; // 指向第 i 个查询向量的起始地址
+        const float * y_ = y;         // 指向数据库向量首地址
         size_t j;
+
+        // simi 和 idxi 用于存放搜索结果堆的信息：
+        // simi: 保存距离值的数组（最大堆的值），初始时无序
+        // idxi: 保存对应的ID数组
         float * __restrict simi = res->get_val(i);
-        long * __restrict idxi = res->get_ids (i);
+        long * __restrict idxi = res->get_ids(i);
 
-        maxheap_heapify (k, simi, idxi);
+        // 将 simi 和 idxi 初始化为堆结构（最大堆）
+        // maxheap_heapify 会根据距离值在 simi 中构建一个最大堆，
+        // 堆顶为当前已知的最大距离元素。
+        maxheap_heapify(k, simi, idxi);
+
+        // 遍历数据库中的每个向量 y[j]
         for (j = 0; j < ny; j++) {
-            float disij = fvec_L2sqr (x_, y_, d);
+            // 计算查询向量 x[i] 与数据库向量 y[j] 的 L2 距离平方
+            // fvec_L2sqr 函数用于计算两个浮点向量之间的 L2 距离平方
+            float disij = fvec_L2sqr(x_, y_, d);
 
+            // 比较当前计算的距离 disij 与堆顶元素（simi[0]）的距离值
+            // 堆顶元素 simi[0] 是当前已知最近邻中距离最大的一个
+            // 如果 disij < simi[0]，说明找到了更近的邻居
             if (disij < simi[0]) {
-                maxheap_pop (k, simi, idxi);
-                maxheap_push (k, simi, idxi, disij, j);
+                // 弹出堆中距离最大的元素
+                maxheap_pop(k, simi, idxi);
+                // 将新元素（disij, j）压入堆中
+                // j 是数据库中向量的ID（或索引）
+                maxheap_push(k, simi, idxi, disij, j);
             }
-            y_ += d;
+
+            y_ += d; // 移动到下一个数据库向量的起始地址
         }
-        maxheap_reorder (k, simi, idxi);
+
+        // 完成对所有 ny 个数据库向量的处理后，将堆排序为有序结果
+        // maxheap_reorder 会将堆结构中的结果进行升序或特定序排列，
+        // 以便输出时直接获得排序好的最近邻列表。
+        maxheap_reorder(k, simi, idxi);
     }
 
 }
@@ -986,7 +1011,7 @@ void knn_L2sqr (const float * x,
     // 还是使用 BLAS 优化版本 (knn_L2sqr_blas) 来计算距离。
 
     // 如果向量维度 d 是4的整数倍且查询数量 nx 小于某个阈值，
-    // 则使用专门的 SSE优化版本 knn_L2sqr_sse，能更快地进行向量化运算。
+    // 则使用专门的 SSE 优化版本 knn_L2sqr_sse 能更快地进行向量化运算。
     if (d % 4 == 0 && nx < distance_compute_blas_threshold) {
         knn_L2sqr_sse (x, y, d, nx, ny, res);
     } else {
